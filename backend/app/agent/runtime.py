@@ -2,7 +2,7 @@ import uuid
 import asyncio
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 import aiosqlite
 
 from backend.app.config import settings
@@ -77,7 +77,12 @@ class AgentRuntime:
     def __init__(self):
         self.active_runs: Dict[str, Dict[str, Any]] = {}
 
-    async def start_task(self, prompt: str, cdp_port: Optional[int] = None) -> str:
+    async def start_task(
+        self,
+        prompt: str,
+        cdp_port: Optional[int] = None,
+        on_complete: Optional[Callable[[str], Awaitable[None]]] = None,
+    ) -> str:
         """Starts a new agent task execution."""
         run_id = f"run_{uuid.uuid4().hex[:8]}"
         task_id = f"task_{uuid.uuid4().hex[:8]}"
@@ -98,7 +103,8 @@ class AgentRuntime:
             "paused_for_confirmation": None,
             "paused_for_challenge": None,
             "paused_for_clarification": None,
-            "cdp_port": cdp_port
+            "cdp_port": cdp_port,
+            "on_complete": on_complete
         }
 
         self.active_runs[run_id] = run_context
@@ -340,7 +346,7 @@ class AgentRuntime:
                 logger.warning(f"Could not generate LLM abstract: {err}. Building structured summary from sources.")
                 abstract_text = (
                     f"### Key Findings Abstract for '{prompt}'\n\n" +
-                    "\n".join([f"• **{s.get('title', 'Verified Source')}**: {s.get('content', '')[:200]}..." for s in run["sources"][:5]])
+                    "\n".join([f"- **{s.get('title', 'Verified Source')}**: {s.get('content', '')[:200]}..." for s in run["sources"][:5]])
                 )
 
             metrics_summary = (
@@ -365,12 +371,13 @@ class AgentRuntime:
 
             evidence_mgr.save_final_result(final_data)
 
-            # Save preference memory if applicable
-            await memory_manager.add_memory(
-                category="task_history",
-                content=f"Executed task '{prompt[:80]}' with status {verification_res.status.value}",
-                source_run_id=run_id
-            )
+            # Save preference memory if applicable (Local Mode only)
+            if not settings.is_public_mode:
+                await memory_manager.add_memory(
+                    category="task_history",
+                    content=f"Executed task '{prompt[:80]}' with status {verification_res.status.value}",
+                    source_run_id=run_id
+                )
 
             # Update DB
             async with aiosqlite.connect(DB_PATH) as db:
@@ -386,6 +393,11 @@ class AgentRuntime:
             logger.exception(f"Unhandled error in agent runtime loop for run {run_id}: {e}")
             await self._transition_state(run_id, AgentState.FAILED)
             await event_manager.broadcast(run_id, "task_failed", {"error": str(e)})
+        finally:
+            on_complete = run.get("on_complete")
+            if on_complete:
+                await on_complete(run_id)
+                run["on_complete"] = None
 
     async def resume_after_confirmation(self, run_id: str, approved: bool):
         run = self.active_runs.get(run_id)

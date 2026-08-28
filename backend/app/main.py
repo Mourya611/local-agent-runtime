@@ -4,13 +4,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Dict, Any, Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import aiosqlite
 
-from backend.app.config import settings
 from backend.app.database import init_db, DB_PATH
 from backend.app.config import settings
 from backend.app.agent.runtime import agent_runtime
@@ -38,10 +37,12 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Enable CORS for Next.js frontend
+# Parse CORS origins from settings (supports comma-separated origins)
+cors_origins_list = [origin.strip() for origin in settings.CORS_ORIGINS.split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -49,6 +50,15 @@ app.add_middleware(
 
 # Mount runs directory for serving screenshots & artifacts
 app.mount("/runs_files", StaticFiles(directory=str(settings.RUNS_DIR)), name="runs_files")
+
+# In-memory IP Rate Limiter and Concurrency tracker for Public Mode
+ip_request_history: Dict[str, list] = {}
+active_public_tasks_count: int = 0
+
+async def release_public_task_slot(run_id: str):
+    """Release one public-mode execution slot after a background run exits."""
+    global active_public_tasks_count
+    active_public_tasks_count = max(0, active_public_tasks_count - 1)
 
 # Request Models
 class TaskRequest(BaseModel):
@@ -71,6 +81,7 @@ async def root():
     return {
         "name": "Open-Source Local-First Agent Runtime API",
         "version": settings.VERSION,
+        "mode": settings.AGENT_MODE,
         "status": "online",
         "documentation": "/docs",
         "health": "/health",
@@ -81,7 +92,8 @@ async def root():
 async def health_check():
     return {
         "status": "ok", 
-        "version": settings.VERSION, 
+        "version": settings.VERSION,
+        "mode": settings.AGENT_MODE,
         "service": "Agent Runtime API"
     }
 
@@ -95,6 +107,7 @@ async def system_diagnostics():
     
     return {
         "version": settings.VERSION,
+        "mode": settings.AGENT_MODE,
         "environment": {
             "python_version": sys.version.split()[0],
             "database_ready": db_connected,
@@ -107,16 +120,56 @@ async def system_diagnostics():
 @app.get("/api/settings")
 async def get_settings():
     """Returns provider status without revealing secrets."""
-    return settings.get_provider_status()
+    res = settings.get_provider_status()
+    res["mode"] = settings.AGENT_MODE
+    return res
 
 @app.post("/api/tasks")
-async def create_task(req: TaskRequest):
-    """Creates and starts an execution task."""
+async def create_task(req: TaskRequest, request: Request):
+    """Creates and starts an execution task with rate limiting and concurrency safeguards."""
+    global active_public_tasks_count
+    import time
+    
     if not req.prompt.strip():
         raise HTTPException(status_code=400, detail="Task prompt cannot be empty.")
+
+    # Enforce Public Mode Security & Rate Limits
+    if settings.is_public_mode:
+        client_ip = request.client.host if request.client else "unknown"
+
+        # 1. IP Rate Limiting check
+        now = time.time()
+        history = [t for t in ip_request_history.get(client_ip, []) if now - t < 60]
+        if len(history) >= settings.RATE_LIMIT_REQUESTS_PER_MIN:
+            raise HTTPException(
+                status_code=429, 
+                detail=f"Rate limit exceeded. Maximum {settings.RATE_LIMIT_REQUESTS_PER_MIN} requests per minute allowed."
+            )
+        history.append(now)
+        ip_request_history[client_ip] = history
+
+        # 2. Concurrent Tasks check
+        if active_public_tasks_count >= settings.MAX_CONCURRENT_PUBLIC_TASKS:
+            raise HTTPException(
+                status_code=429, 
+                detail="Public server is busy processing maximum concurrent research tasks. Please try again in a few moments."
+            )
+            
+        # 3. Block CDP Port attachment in public mode
+        cdp_port = None
+        active_public_tasks_count += 1
+        on_complete = release_public_task_slot
+    else:
+        cdp_port = req.cdp_port
+        on_complete = None
     
-    run_id = await agent_runtime.start_task(prompt=req.prompt, cdp_port=req.cdp_port)
-    return {"run_id": run_id, "status": "started"}
+    try:
+        run_id = await agent_runtime.start_task(prompt=req.prompt, cdp_port=cdp_port, on_complete=on_complete)
+    except Exception:
+        if settings.is_public_mode:
+            active_public_tasks_count = max(0, active_public_tasks_count - 1)
+        raise
+    return {"run_id": run_id, "status": "started", "mode": settings.AGENT_MODE}
 
 @app.get("/api/runs")
 async def list_runs():

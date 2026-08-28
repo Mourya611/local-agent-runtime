@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Camera, ExternalLink, ShieldCheck, FileCheck, Layers, Globe } from "lucide-react";
+import { Camera, ExternalLink, ShieldCheck, Layers, Globe } from "lucide-react";
 
 interface EvidenceItem {
   id: string;
@@ -13,11 +13,24 @@ interface EvidenceItem {
   path: string;
 }
 
+interface SourceItem {
+  title?: string;
+  url?: string;
+  content?: string;
+}
+
+interface VerificationResult {
+  status?: string;
+  reasoning?: string;
+}
+
 interface EvidencePanelProps {
   evidence: EvidenceItem[];
-  sources: any[];
-  verification?: any;
+  sources: SourceItem[];
+  verification?: VerificationResult;
 }
+
+const getApiUrl = () => process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 export default function EvidencePanel({ evidence = [], sources = [], verification }: EvidencePanelProps) {
   const [activeTab, setActiveTab] = useState<"screenshots" | "sources" | "verification">("screenshots");
@@ -77,7 +90,7 @@ export default function EvidencePanel({ evidence = [], sources = [], verificatio
               {evidence.map((item) => {
                 const filename = item.path.split(/[\\/]/).pop();
                 const runId = item.path.split(/[\\/]/).reverse()[2] || "";
-                const imgUrl = `http://127.0.0.1:8000/runs_files/${runId}/screenshots/${filename}`;
+                const imgUrl = `${getApiUrl()}/runs_files/${runId}/screenshots/${filename}`;
 
                 return (
                   <div
@@ -178,7 +191,7 @@ export default function EvidencePanel({ evidence = [], sources = [], verificatio
                 onClick={() => setSelectedScreenshot(null)}
                 className="text-xs text-slate-400 hover:text-slate-100 px-2 py-1 bg-slate-800 rounded-md"
               >
-                ✕ Close
+                Close
               </button>
             </div>
             <img src={selectedScreenshot} alt="Full evidence view" className="max-h-[75vh] w-auto mx-auto rounded-xl object-contain border border-slate-800" />
