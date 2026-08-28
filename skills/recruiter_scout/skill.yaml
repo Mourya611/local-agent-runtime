@@ -1,0 +1,18 @@
+name: recruiter_scout
+description: Specialist Talent Scout & HR Recruiter discovery skill for finding active recruiters, talent acquisition leads, and HR profiles hiring for AI/Tech freshers on LinkedIn and career platforms.
+version: 1.0.0
+author: Agent Runtime
+inputs:
+  - name: role_target
+    type: string
+    required: true
+    description: Target job role or batch (e.g. AI Engineer Freshers 2026 BTech).
+required_tools:
+  - web_search
+  - browser_navigate
+  - browser_screenshot
+  - browser_extract
+output_schema:
+  recruiter_profiles: array
+  hiring_posts: array
+  summary: string
