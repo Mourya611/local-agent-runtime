@@ -42,12 +42,16 @@ class BrowserTool:
 
         # Fallback to local persistent browser context with user profile
         self.user_data_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Launching local persistent Chromium context at {self.user_data_dir}...")
+        logger.info(f"Launching persistent Chromium context at {self.user_data_dir}...")
+        
+        import os
+        is_headless = settings.is_public_mode or os.environ.get("RENDER") is not None or os.name != "nt"
+        
         self.context = await self.playwright.chromium.launch_persistent_context(
             user_data_dir=str(self.user_data_dir),
-            headless=False,  # Visible browser for user observation
+            headless=is_headless,
             viewport={"width": 1280, "height": 800},
-            args=["--disable-blink-features=AutomationControlled"]
+            args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
         )
         
         if self.context.pages:
