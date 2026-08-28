@@ -1,13 +1,32 @@
 "use client";
 
-import React from "react";
-import { ShieldCheck, Cpu, Sparkles } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { Cpu, ShieldAlert, ShieldCheck, Sparkles } from "lucide-react";
 
 interface HeaderProps {
   currentState?: string;
 }
 
 export default function Header({ currentState = "IDLE" }: HeaderProps) {
+  const [isPublicMode, setIsPublicMode] = useState(false);
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+        const res = await fetch(`${apiUrl}/api/settings`);
+        if (res.ok) {
+          const data = await res.json();
+          setIsPublicMode(data.mode === "public");
+        }
+      } catch {
+        // Backend may still be starting.
+      }
+    };
+
+    fetchSettings();
+  }, []);
+
   const getStateBadgeColor = (state: string) => {
     switch (state) {
       case "COMPLETED":
@@ -27,34 +46,59 @@ export default function Header({ currentState = "IDLE" }: HeaderProps) {
   };
 
   return (
-    <header className="h-16 border-b border-slate-800/80 bg-slate-950/75 backdrop-blur-md px-6 flex items-center justify-between sticky top-0 z-20 shadow-md">
-      <div className="flex items-center gap-3">
-        <div className="p-2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-xl shadow-md">
-          <Sparkles className="w-4 h-4" />
-        </div>
-        <div>
-          <span className="font-bold text-sm text-slate-100 tracking-wide">
-            Autonomous Agent Core
+    <div className="sticky top-0 z-20 flex flex-col">
+      {isPublicMode && (
+        <div className="bg-gradient-to-r from-amber-950/90 via-slate-900 to-indigo-950/90 border-b border-amber-500/30 px-6 py-1.5 flex items-center justify-between text-xs text-amber-200">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="font-semibold">PUBLIC DEMO:</span>
+            <span>
+              Running in secure cloud sandbox. Personal Chrome sessions, credentials, and local host files are strictly isolated.
+            </span>
+          </div>
+          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300">
+            Cloud Research Sandbox
           </span>
-          <span className="ml-2 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-            Local-First
-          </span>
         </div>
-      </div>
+      )}
 
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-900/60 px-3 py-1.5 rounded-xl border border-slate-800">
-          <ShieldCheck className="w-4 h-4 text-emerald-400" />
-          <span>Safety Engine: <strong className="text-slate-200 font-semibold">Active Policy</strong></span>
+      <header className="h-16 border-b border-slate-800/80 bg-slate-950/75 backdrop-blur-md px-6 flex items-center justify-between shadow-md">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-xl shadow-md">
+            <Sparkles className="w-4 h-4" />
+          </div>
+          <div>
+            <span className="font-bold text-sm text-slate-100 tracking-wide">Autonomous Agent Core</span>
+            <span
+              className={`ml-2 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full ${
+                isPublicMode
+                  ? "bg-amber-500/10 text-amber-300 border border-amber-500/30"
+                  : "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20"
+              }`}
+            >
+              {isPublicMode ? "Public Demo" : "Local-First"}
+            </span>
+          </div>
         </div>
 
-        <div className="h-4 w-px bg-slate-800" />
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-900/60 px-3 py-1.5 rounded-xl border border-slate-800">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <span>
+              Safety Engine: <strong className="text-slate-200 font-semibold">Active Policy</strong>
+            </span>
+          </div>
 
-        <div className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border ${getStateBadgeColor(currentState)} flex items-center gap-2 transition`}>
-          <Cpu className="w-3.5 h-3.5" />
-          <span>● {currentState}</span>
+          <div className="h-4 w-px bg-slate-800" />
+
+          <div
+            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border ${getStateBadgeColor(currentState)} flex items-center gap-2 transition`}
+          >
+            <Cpu className="w-3.5 h-3.5" />
+            <span>{currentState}</span>
+          </div>
         </div>
-      </div>
-    </header>
+      </header>
+    </div>
   );
 }

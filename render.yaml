@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: local-agent-runtime-backend
+    env: python
+    region: oregon
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: python -m uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: AGENT_MODE
+        value: public
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        value: https://your-agent-frontend.vercel.app
+      - key: MAX_TASK_DURATION_SECONDS
+        value: "120"
+      - key: MAX_TOOL_CALLS_PER_TASK
+        value: "20"
+      - key: MAX_SEARCHES_PER_TASK
+        value: "8"
+      - key: MAX_LLM_CALLS_PER_TASK
+        value: "10"
+      - key: MAX_CONCURRENT_PUBLIC_TASKS
+        value: "3"
+      - key: RATE_LIMIT_REQUESTS_PER_MIN
+        value: "5"
+    healthCheckPath: /health

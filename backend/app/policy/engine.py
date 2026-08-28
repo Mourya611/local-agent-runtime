@@ -54,10 +54,17 @@ class PolicyEngine:
 
     def evaluate(self, tool_name: str, action: str, arguments: Dict[str, Any]) -> PolicyMode:
         """Determines if a tool execution is allowed, requires confirmation, or is denied."""
+        from backend.app.config import settings
         
-        # Check explicit denied actions
         action_key = f"{tool_name}_{action}" if action else tool_name
         
+        # Enforce Public Mode Security Allowlist & Denylist
+        if settings.is_public_mode:
+            PUBLIC_ALLOWED_TOOLS = {"web_search", "web_extract", "safe_http_get", "source_analysis", "verification"}
+            if tool_name not in PUBLIC_ALLOWED_TOOLS and action_key not in PUBLIC_ALLOWED_TOOLS:
+                logger.warning(f"Public Mode DENIED action '{action_key}': tool not in public allowlist.")
+                return PolicyMode.DENIED
+
         # Check for password/credential reading attempts
         arg_str = str(arguments).lower()
         if "password" in arg_str or "secret_key" in arg_str or "auth_token" in arg_str:
