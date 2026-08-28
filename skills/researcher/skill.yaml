@@ -1,0 +1,23 @@
+name: researcher
+description: Production Web Researcher skill for deep research, source cross-checking, browser verification, and evidence capture.
+version: 1.0.0
+author: Agent Runtime
+inputs:
+  - name: goal
+    type: string
+    required: true
+    description: Primary research goal or question.
+required_tools:
+  - web_search
+  - browser_navigate
+  - browser_extract
+  - browser_screenshot
+output_schema:
+  summary: string
+  total_sources_searched: integer
+  relevant_opportunities_count: integer
+  rejected_count: integer
+  top_opportunities: array
+  evidence_count: integer
+  sources: array
+  warnings: array

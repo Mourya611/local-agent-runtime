@@ -1,0 +1,12 @@
+name: example_researcher
+description: Safe reference template skill demonstrating web search, multi-source synthesis, screenshot evidence capture, and empirical verification.
+version: 0.1.0
+author: Open-Source Community
+required_tools:
+  - web_search
+  - browser_navigate
+  - browser_screenshot
+permissions:
+  mode: allowed
+  sensitive_actions: []
+verification_required: true
