@@ -36,18 +36,31 @@ class Planner:
         tools_str = "\n".join([f"- {t['name']}: {t['description']}" for t in available_tools])
         memories_str = "\n".join([f"- {m}" for m in memories]) if memories else "None"
         
+        from backend.app.config import settings
+        
+        if settings.is_public_mode:
+            tool_rules = (
+                '1. ALWAYS use valid public tools: "web_search". Do NOT use "browser_navigate" or "browser_click".\n'
+                '2. "web_search" MUST take args: {"query": "search query string"}.\n'
+                '3. Formulate 1 to 2 comprehensive web_search steps to research the user query thoroughly.'
+            )
+        else:
+            tool_rules = (
+                '1. ALWAYS use valid tool names: "web_search", "browser_navigate", "browser_click", "browser_type", "browser_scroll".\n'
+                '2. "web_search" MUST take args: {"query": "search query string"}.\n'
+                '3. "browser_navigate" MUST take args: {"url": "target URL or domain string"}.\n'
+                '4. For recruiter/HR/profile discovery tasks (e.g., LinkedIn HRs hiring freshers):\n'
+                '   - Start with "web_search" using targeted terms like "site:linkedin.com/in [keywords]" or "site:linkedin.com/posts [keywords]".\n'
+                '   - Then use "browser_navigate" to inspect relevant candidate profile or career portal URLs.'
+            )
+        
         prompt = (
             f"User Goal: '{task_prompt}'\n\n"
             f"User Persistent Preferences:\n{memories_str}\n\n"
             f"Available Tools:\n{tools_str}\n\n"
-            "Decompose the user goal into a clear, efficient execution plan (2 to 5 steps).\n"
+            "Decompose the user goal into a clear, efficient execution plan (1 to 3 steps).\n"
             "Rules for Tool Selection:\n"
-            '1. ALWAYS use valid tool names: "web_search", "browser_navigate", "browser_click", "browser_type", "browser_scroll".\n'
-            '2. "web_search" MUST take args: {"query": "search query string"}.\n'
-            '3. "browser_navigate" MUST take args: {"url": "target URL or domain string"}.\n'
-            '4. For recruiter/HR/profile discovery tasks (e.g., LinkedIn HRs hiring freshers):\n'
-            '   - Start with "web_search" using targeted terms like "site:linkedin.com/in [keywords]" or "site:linkedin.com/posts [keywords]".\n'
-            '   - Then use "browser_navigate" to inspect relevant candidate profile or career portal URLs.'
+            f"{tool_rules}"
         )
 
         logger.info(f"Generating execution plan for task: '{task_prompt}'")
@@ -61,12 +74,24 @@ class Planner:
             return ExecutionPlan(**res)
         except Exception as err:
             logger.warning(f"Structured plan generation encountered issue: {err}. Using default search and browse plan.")
+            second_step = PlanStep(
+                id="step_2", 
+                description=f"Analyze search findings for '{task_prompt}'", 
+                tool="web_search", 
+                args={"query": f"{task_prompt} top options"}
+            ) if settings.is_public_mode else PlanStep(
+                id="step_2", 
+                description=f"Navigate to relevant recruiter profiles or results", 
+                tool="browser_navigate", 
+                args={"url": task_prompt}
+            )
+
             return ExecutionPlan(
                 goal=task_prompt,
                 reasoning="Fallback execution plan generated to ensure high availability during high LLM demand.",
                 steps=[
                     PlanStep(id="step_1", description=f"Search web for '{task_prompt}'", tool="web_search", args={"query": task_prompt}),
-                    PlanStep(id="step_2", description=f"Navigate to relevant recruiter profiles or results", tool="browser_navigate", args={"url": task_prompt})
+                    second_step
                 ]
             )
 
