@@ -97,6 +97,7 @@ type EventPayload = Record<string, unknown> & {
 export default function Dashboard() {
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
   const [currentState, setCurrentState] = useState<string>("IDLE");
+  const [currentObjective, setCurrentObjective] = useState<string>("");
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [evidence, setEvidence] = useState<EvidenceItem[]>([]);
   const [sources, setSources] = useState<SourceItem[]>([]);
@@ -109,6 +110,7 @@ export default function Dashboard() {
   const isExecuting = !["IDLE", "COMPLETED", "FAILED", "CANCELLED"].includes(currentState);
 
   const startTask = async (prompt: string) => {
+    setCurrentObjective(prompt);
     setEvents([]);
     setEvidence([]);
     setSources([]);
@@ -267,9 +269,16 @@ export default function Dashboard() {
             <TaskInput onSubmit={startTask} onStop={handleStopTask} isExecuting={isExecuting} />
           </div>
 
-          {/* Final Output Display */}
-          {finalResult && (
-            <FinalOutputCard finalResult={finalResult} sources={sources} evidence={evidence} />
+          {/* Prominent Final Agent Output Display */}
+          {(isExecuting || finalResult || currentState === "FAILED" || currentState === "CANCELLED") && (
+            <FinalOutputCard 
+              finalResult={finalResult} 
+              sources={sources} 
+              evidence={evidence} 
+              isExecuting={isExecuting}
+              currentState={currentState}
+              objective={currentObjective}
+            />
           )}
 
           {/* Execution Timeline & Evidence Side-by-Side */}
