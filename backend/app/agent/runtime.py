@@ -353,21 +353,40 @@ class AgentRuntime:
             abstract_prompt = (
                 f"User Objective: '{prompt}'\n\n"
                 f"Retrieved Verified Sources:\n{sources_summary}\n\n"
-                "Synthesize a clear, comprehensive executive abstract and structured summary answering the user query directly. "
-                "Highlight specific tool names, company names, recruiter profiles, or key findings in concise bullet points."
+                "Synthesize a direct, clear, and comprehensive final answer addressing the user's objective based on the retrieved web research.\n"
+                "Formatting rules:\n"
+                "- Use Markdown (headings e.g. ###, bullet points `-`, numbered lists `1.`, bold `**text**`).\n"
+                "- Provide specific company names, role titles, locations, key insights, or findings as requested.\n"
+                "- Include source references or links where applicable.\n"
+                "- End with a brief '### Research Summary' section stating total sources analyzed and key takeaways."
             )
             
             try:
                 abstract_text = await llm_router.generate(
                     prompt=abstract_prompt,
                     task_type="general",
-                    system_prompt="You are a staff research analyst. Synthesize a professional, direct executive abstract with clear key findings."
+                    system_prompt="You are a staff research analyst. Synthesize a professional, direct, structured final answer with clear findings and citations."
                 )
             except Exception as err:
                 logger.warning(f"Could not generate LLM abstract: {err}. Building structured summary from sources.")
+                findings = []
+                for idx, s in enumerate(run["sources"][:6], 1):
+                    title = s.get("title", f"Source {idx}")
+                    url = s.get("url", "")
+                    content = s.get("content", "")[:250]
+                    link_str = f" ([Source Link]({url}))" if url else ""
+                    findings.append(f"{idx}. **{title}**{link_str}\n   - {content}")
+                
+                sources_block = "\n\n".join(findings) if findings else "No external web sources retrieved during execution."
+                
                 abstract_text = (
-                    f"### Key Findings Abstract for '{prompt}'\n\n" +
-                    "\n".join([f"- **{s.get('title', 'Verified Source')}**: {s.get('content', '')[:200]}..." for s in run["sources"][:5]])
+                    f"### Key Findings & Research Answer\n\n"
+                    f"Based on web research for **\"{prompt}\"**:\n\n"
+                    f"{sources_block}\n\n"
+                    f"### Research Summary\n"
+                    f"- **Sources Analyzed**: {len(run['sources'])}\n"
+                    f"- **Evidence Screenshot Count**: {len(run['evidence'])}\n"
+                    f"- **Audit Verification**: {verification_res.status.value}"
                 )
 
             metrics_summary = (
@@ -381,6 +400,7 @@ class AgentRuntime:
                 "run_id": run_id,
                 "prompt": prompt,
                 "summary": abstract_text,
+                "finalAnswer": abstract_text,
                 "metrics_summary": metrics_summary,
                 "verification": verification_res.model_dump(),
                 "completed_steps": run["completed_steps"],
